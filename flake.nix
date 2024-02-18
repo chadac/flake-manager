@@ -15,7 +15,7 @@
     mk-shell-bin.url = "github:rrbutani/nix-mk-shell-bin";
   };
 
-  outputs = { self, systems, devenv, ... }: {
-    flakeModule = import ./modules { inherit systems devenv; };
+  outputs = { self, systems, devenv, nix2container, mk-shell-bin, ... }: {
+    flakeModule = import ./modules { inherit systems devenv nix2container mk-shell-bin; };
   };
 }
