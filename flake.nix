@@ -3,10 +3,19 @@
 
   inputs = {
     systems.url = "github:nix-systems/default";
-    devenv.url = "github:cachix/devenv";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    devenv = {
+      url = "github:cachix/devenv";
+      inputs.nixpkgs.follows  = "nixpkgs";
+    };
+    nix2container = {
+      url = "github:nlewo/nix2container";
+      inputs.nixpkgs.follows  = "nixpkgs";
+    };
+    mk-shell-bin.url = "github:rrbutani/nix-mk-shell-bin";
   };
 
-  outputs = { self, systems, devenv }: {
+  outputs = { self, systems, devenv, ... }: {
     flakeModule = import ./modules { inherit systems devenv; };
   };
 }
