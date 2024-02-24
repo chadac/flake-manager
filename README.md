@@ -1,4 +1,4 @@
-# flake-parts-templates
+# flake-manager
 
-An extension to `flake-parts` that adds templates for common projects
-that I run into.
+Experimental set of extensions to flake-parts that makes it a bit
+easier to quickly build new flakes.

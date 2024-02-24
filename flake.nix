@@ -4,18 +4,26 @@
   inputs = {
     systems.url = "github:nix-systems/default";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    devenv = {
-      url = "github:cachix/devenv";
-      inputs.nixpkgs.follows  = "nixpkgs";
-    };
-    nix2container = {
-      url = "github:nlewo/nix2container";
-      inputs.nixpkgs.follows  = "nixpkgs";
-    };
-    mk-shell-bin.url = "github:rrbutani/nix-mk-shell-bin";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    # arion = {
+    #   url = "github:hercules-ci/arion";
+    #   inputs.nixpkgs.follows = "nixpkgs";
+    # };
+    # devenv = {
+    #   url = "github:cachix/devenv";
+    #   inputs.nixpkgs.follows  = "nixpkgs";
+    # };
   };
 
-  outputs = { self, systems, devenv, nix2container, mk-shell-bin, ... }: {
-    flakeModule = import ./modules { inherit systems devenv nix2container mk-shell-bin; };
+  outputs = { self, systems, flake-parts, ... }@oldInputs: rec {
+    flakeModule = import ./modules systems;
+    lib = {
+      mkFlake = { inputs, ... }@arg1: newFlakeModule:
+        (inputs.flake-parts or flake-parts).lib.mkFlake (arg1 // {
+          inputs = oldInputs // inputs;
+        }) {
+          imports = [ flakeModule newFlakeModule ];
+        };
+    };
   };
 }
