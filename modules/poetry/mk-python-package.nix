@@ -11,15 +11,12 @@ let
   deps = builtins.attrNames pyproject.tool.poetry.dependencies;
   buildDeps = map (buildDep: builtins.match "([A-Za-z0-9_\.\-]+).*" buildDep)
     pyproject.build-system.requires;
-in rec {
-  name = pyproject.tool.poetry.name;
-  value = pypkgs: pypkgs.buildPythonPackage {
-    pname = name;
-    version = pyproject.tool.poetry.version;
-    inherit src;
-    format = "pyproject";
+in pypkgs.buildPythonPackage {
+  pname = pyproject.tool.poetry.name;
+  version = pyproject.tool.poetry.version;
+  inherit src;
+  format = "pyproject";
 
-    nativeBuildInputs = map (dep: pypkgs.${dep}) buildDeps;
-    buildInputs = map (dep: pypkgs.${dep}) deps;
-  };
+  nativeBuildInputs = map (dep: pypkgs.${dep}) buildDeps;
+  buildInputs = map (dep: pypkgs.${dep}) deps;
 }

@@ -1,60 +1,59 @@
-{ inputs, lib, flake-parts-lib, python-libraries, ... }: let
+{ inputs, lib, config, ... }: let
   inherit (lib)
     concatMap
     concatMapAttrs
+    listToAttrs
     mapAttrs
     mapAttrs'
     mkOption
     types
   ;
-  inherit (flake-parts-lib)
-    mkSubmoduleOptions
+
+  # an overlay that provides all Python libraries as an overlay.
+  python-registry-overlay = final: prev: let
+    pyVers = map (v: "python${v}") ["38" "39" "310" "311" "312" "313"];
+    pythonVersions = listToAttrs
+      (map (name: { inherit name; value = final.${name}; }) pyVers);
+  in concatMapAttrs
+    (pyVer: finalPython: let
+      packageOverrides = self: super: mapAttrs
+        (_: pybuilder: pybuilder final finalPython self)
+        config.flake-manager.registries.python;
+      pyNew = finalPython.override {
+        inherit packageOverrides;
+        self = pyNew;
+      };
+    in {
+      "${pyVer}" = pyNew;
+    })
+    pythonVersions
   ;
-  registryPackageBuilderType = types.functionTo (types.functionTo types.package);
-  registryType = types.lazyAttrsOf registryPackageBuilderType;
+
+  # pkgs: python: pythonPackages: <pythonLibrary>
+  pythonPackageType = types.functionTo types.functionTo types.functionTo types.package;
 in {
   options = {
-    flake = mkSubmoduleOptions {
-      registries = mkOption {
-        type = types.submodule {
-          options = {
-            python = mkOption {
-              type = registryType;
-              description = "an attribute list of python packages to export";
-              default = { };
-            };
-          };
-        };
-        default = { };
-      };
+    flake-manager.registries.python = mkOption {
+      type = types.lazyAttrsOf pythonPackageType;
+      default = { };
+    };
+
+    flake.registries.python = mkOption {
+      type = types.lazyAttrsOf pythonPackageType;
+      default = { };
     };
   };
+
   config = {
-    _module.args.python-libraries = concatMapAttrs
+    flake-manager.registries.python = concatMapAttrs
       (name: input:
         if name == "self" then { }
-        else input.registries.python or { }
-      )
+        else input.registries.python or { })
       inputs
     ;
-    _module.args.flake-modules-lib = {
-      overridePython =
-        {
-          pkgs,
-          pyName ? "python3",
-          extraOverrides ? [ ],
-        }:
-        pkgs.override(final: prev: let
-          packageOverrides = self: super: mapAttrs'
-            (_: builder: builder final self)
-            (python-libraries ++ extraOverrides);
-          newPython = pkgs.${pyName}.override {
-            inherit packageOverrides;
-            self = newPython;
-          };
-        in {
-          ${pyName} = newPython;
-        });
-    };
+
+    flake-manager.overlays.python-registry =
+      python-registry-overlay
+    ;
   };
 }

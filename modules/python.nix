@@ -1,7 +1,8 @@
-{ inputs, config, lib, flake-parts-lib, flake-parts-templates-lib, python-libraries, ... }:
+{ inputs, config, lib, flake-parts-lib, flake-manager-lib, ... }:
 let
   inherit (lib)
     concatMapAttrs
+    listToAttrs
     mapAttrs
     mapAttrs'
     mkEnableOption
@@ -12,64 +13,80 @@ let
     mkPerSystemOption
     types
   ;
-  inherit (flake-parts-templates-lib)
+  inherit (flake-manager-lib)
+    evalBuilder
+    mkBuilderOption
     mkDerivationOptions
   ;
-  pythonOverride = overrides: pkgs: python: let
-    packageOverrides = self: super: mapAttrs
-      (name: builder: builder python self)
-      python-libraries;
-    newPython = python.override {
-      inherit packageOverrides;
-      self = newPython;
-    };
-  in newPython;
-
-  pythonBuilderOptions = {
-    format = mkOption {
-      type = types.str;
-    };
-    pythonVersion = mkOption {
-      type = types.str;
-      default = cfg.package;
+  cfg = config.python;
+  pythonOptions = { config, ... }: {
+    options = {
     };
   };
-  pythonPackageType = types.submodule ({
-  } // pythonBuilderOptions // mkDerivationOptions);
-  pythonAppType = types.submodule ({
-  } // pythonBuilderOptions // mkDerivationOptions);
-  cfg = config.python;
+  pythonPackageType = mkBuilderOption [
+    mkDerivationOptions
+    pythonOptions
+  ];
+
+  pythonBuilder = { cmd, module }: pkgs: python3: pythonPackages: let
+    args = evalBuilder module;
+  in pythonPackages.${cmd} args;
 in {
+  _file = __curPos.file;
+
   options.python = {
-    enable = true;
-    package = mkOption {
+    defaultVersion = mkOption {
       type = types.str;
-      default = "python3";
+      default = "3";
     };
+
+    additionalVersions = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+    };
+
     packages = {
       type = types.lazyAttrsOf pythonPackageType;
       default = { };
     };
+
     apps = {
-      type = types.lazyAttrsOf pythonAppType;
+      type = types.lazyAttrsOf pythonPackageType;
       default = { };
     };
   };
-  config.perSystem = { pkgs, ... }: let
-    python3 = pkgs.${cfg.package}.override (pythonOverride (python-libraries // overridePackages));
-    packages = mapAttrs (_: args: python3.mkPythonPackage args) cfg.packages;
-    apps = mapAttrs (_: args: python3.mkPythonApplication args) cfg.apps;
-    overridePackages = mapAttrs (_: pkg: { name = pkg.pname; value = pkg; }) packages;
-  in lib.mkIf cfg.enable (
-    mkMerge (mapAttrs (name: pkg: { packages.${name} = pkg; }) (apps // packages))
-  );
 
-  config.flake.registries.python = mapAttrs
-    (name: args: let
-      pname = args.pname or (throw "flake-modules: could not infer Python package name for '${name}'. Ensure you include a `pname` parameter.");
-    in {
-      ${pname} = (_: pyPkgs: pyPkgs.buildPythonPackage args);
-    })
-    cfg.packages
-  ;
+  config = {
+    flake.builders.python-package = mapAttrs
+      (name: derivModule: pythonBuilder {
+        cmd = "buildPythonPackage";
+        args = derivModule;
+      })
+      config.python.packages;
+
+    flake.builders.python-app = mapAttrs
+      (name: derivModule: pythonBuilder {
+        cmd = "buildPythonApplication";
+        args = derivModule;
+      })
+      config.python.apps;
+
+    perSystem = { pkgs, ... }: let
+      defaultPython = pkgs."python${cfg.pythonVersion}";
+      additionalPythons = listToAttrs (map
+        (v: { name = "python${v}"; value = pkgs."python${v}"; })
+        cfg.additionalVersions
+      );
+      allBuilders = config.builders.python-packages // config.builders.python-apps;
+      packages = (mapAttrs
+        (_: builder: builder pkgs defaultPython defaultPython.pkgs)
+        allBuilders
+      ) // (concatMapAttrs
+        (pyVer: python3: mapAttrs'
+          (name: builder: { name = "${pyVer}/${name}"; value = builder pkgs python3 python3.pkgs; })
+          allBuilders)
+        additionalPythons
+      );
+    in lib.mkIf cfg.enable packages;
+  };
 }

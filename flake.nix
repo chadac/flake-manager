@@ -5,14 +5,6 @@
     systems.url = "github:nix-systems/default";
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    # arion = {
-    #   url = "github:hercules-ci/arion";
-    #   inputs.nixpkgs.follows = "nixpkgs";
-    # };
-    # devenv = {
-    #   url = "github:cachix/devenv";
-    #   inputs.nixpkgs.follows  = "nixpkgs";
-    # };
   };
 
   outputs = { self, systems, flake-parts, ... }@oldInputs: rec {

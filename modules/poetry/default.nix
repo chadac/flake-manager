@@ -1,6 +1,7 @@
 { inputs, config, lib, flake-parts-lib, flake-manager-lib, python-libraries, ... }:
 let
   inherit (lib)
+    filterAttrs
     foldAttrs
     getAttrs
     mapAttrs
@@ -11,152 +12,153 @@ let
     types
   ;
   inherit (flake-manager-lib)
-    tryImportFlake;
+    tryImportFlake
+    evalBuilder
+    evalBuilders
+    mkBuilderOption
+    mkDerivationOptions
+  ;
 
-  poetry2nix = tryImportFlake "poetry2nix" "github:nix-community/poetry2nix" [ "nixpkgs" ];
+  poetry2nixFlake = tryImportFlake "poetry2nix" "github:nix-community/poetry2nix" [ "nixpkgs" ];
 
-  poetryAppType = types.submodule ({ config, ... }:
-    let
-      poetryConfig = config;
-    in {
-      # mirrored poetry2nix options
-      options = {
-        projectDir = mkOption {
-          type = types.path;
-          description = "path to the root of the project.";
-        };
-        src = mkOption {
-          type = types.nullOr types.path;
-          description = "project source (default: `cleanPythonSources { src = projectDir; }`).";
-          default = poetryConfig.projectDir;
-        };
-        pyproject = mkOption {
-          type = types.nullOr types.path;
-          description = "path to `pyproject.toml` (default: `projectDir + '/pyproject.toml'`).";
-          default = poetryConfig.projectDir + "/pyproject.toml";
-        };
-        poetrylock = mkOption {
-          type = types.nullOr types.path;
-          description = "`poetry.lock` file path (default: `projectDir + '/poetry.lock'`).";
-          default = poetryConfig.projectDir + "/poetry.lock";
-        };
-        overrides = mkOption {
-          # TODO: explicit type
-          type = types.anything;
-          description = "Python overrides to apply.";
-          default = self: super: {};
-        };
-        meta = mkOption {
-          type = types.attrs;
-          description = "application meta data (default: `{}`).";
-          default = {};
-        };
-        python = mkOption {
-          type = types.str;
-          description = "the Python interpreter to use (default: `'python3'`).";
-          default = "python3";
-        };
-        preferWheels = mkOption {
-          type = types.bool;
-          description = "use wheels rather than sdist as much as possible (default: `false`).";
-          default = false;
-        };
-        groups = mkOption {
-          type = types.listOf types.str;
-          description = "which Poetry 1.2.0+ dependency groups to run install (default `[ ]`).";
-          default = [ ];
-        };
-        checkGroups = mkOption {
-          type = types.listOf types.str;
-          description = "which Poetry 1.2.0+ dependency groups to run unit tests (default: `[ 'dev' ]`).";
-          default = [ "dev" ];
-        };
-        extras = mkOption {
-          type = types.listOf types.str;
-          description = "which Poetry `extras` to install (default: `['*']`, all extras).";
-          default = [ "*" ];
-        };
-
-        doCheck = mkEnableOption "if true, runs `checkPhase`";
-      };
-    }
-  );
-  mkPoetry2Nix = inputs.poetry2nix.lib.mkPoetry2Nix or (
-    throw "input 'poetry2nix' is missing. add `poetry2nix.url = \"github:nix-community/poetry2nix\"` to your `flake.nix`."
-  );
-  mkConfig = name: poetryConfig: let
-    pyprojectFile = builtins.fromTOML (builtins.readFile poetryConfig.pyproject);
-    pname = pyprojectFile.tools.poetry.name;
-    version = pyprojectFile.tools.poetry.version;
+  mkPoetryOptions = { pkgs, config, ... }: let
+    poetryConfig = config;
   in {
-    perSystem = { pkgs, inputs', ... }: let
-      python-lib-overrides = self: super:
-        builtins.mapAttrs (_: builder: builder pkgs self) python-libraries;
-      poetry2nix = mkPoetry2Nix { inherit pkgs; };
-      python = pkgs.${poetryConfig.python};
-      args = poetryConfig // {
-        inherit python;
-        overrides = [
-          poetryConfig.overrides
-          python-lib-overrides
-        ];
+    _file = __curPos.file;
+
+    options = {
+      default = mkEnableOption "if true, marks this as the default package to build in the flake.";
+      projectDir = mkOption {
+        type = types.path;
+        description = "path to the root of the project.";
       };
-      poetry-app = poetry2nix.mkPoetryApplication args;
-      poetry-env = poetry2nix.mkPoetryEnv (args // {
-        editablePackageSources = {
-          ${pname} = args.src;
-        };
-      });
-    in {
-      config = {
-        packages = {
-          ${name} = poetry-app;
-        };
-        devenv.shells = {
-          ${name} = {
-            packages = [ poetry-app.dependencyEnv ];
-            languages.python = {
-              enable = true;
-              package = python;
-              poetry.enable = true;
-            };
-          };
-        };
+      src = mkOption {
+        type = types.path;
+        description = "project source (default: `cleanPythonSources { src = projectDir; }`).";
+        default = poetryConfig.projectDir;
       };
-    };
-    flake = {
-      registries.python.${pname} =
-        import ./mk-python-package.nix poetryConfig.src pyprojectFile;
+      pyproject = mkOption {
+        type = types.path;
+        description = "path to `pyproject.toml` (default: `projectDir + '/pyproject.toml'`).";
+        default = poetryConfig.projectDir + "/pyproject.toml";
+      };
+      poetrylock = mkOption {
+        type = types.path;
+        description = "`poetry.lock` file path (default: `projectDir + '/poetry.lock'`).";
+        default = poetryConfig.projectDir + "/poetry.lock";
+      };
+      overrides = mkOption {
+        # TODO: explicit type
+        type = types.anything;
+        description = "Python overrides to apply.";
+        default = self: super: {};
+      };
+      meta = mkOption {
+        type = types.attrs;
+        description = "application meta data (default: `{}`).";
+        default = {};
+      };
+      python = mkOption {
+        type = types.package;
+        description = "the Python interpreter to use (default: `'python3'`).";
+        default = pkgs.python3;
+      };
+      preferWheels = mkOption {
+        type = types.bool;
+        description = "use wheels rather than sdist as much as possible (default: `false`).";
+        default = false;
+      };
+      groups = mkOption {
+        type = types.listOf types.str;
+        description = "which Poetry 1.2.0+ dependency groups to run install (default `[ ]`).";
+        default = [ ];
+      };
+      checkGroups = mkOption {
+        type = types.listOf types.str;
+        description = "which Poetry 1.2.0+ dependency groups to run unit tests (default: `[ 'dev' ]`).";
+        default = [ "dev" ];
+      };
+      extras = mkOption {
+        type = types.listOf types.str;
+        description = "which Poetry `extras` to install (default: `['*']`, all extras).";
+        default = [ "*" ];
+      };
     };
   };
 
-  # from: https://gist.github.com/udf/4d9301bdc02ab38439fd64fbda06ea43
-  mkMergeTopLevel = names: attrs: getAttrs names (
-    mapAttrs (k: v: mkMerge v) (foldAttrs (n: a: [n] ++ a) [] attrs)
-  );
-
   cfg = config.poetry;
-  enable = cfg.enable;
+
+  devenvModule = {
+    config.perSystem = lib.mkIf cfg.enable ({ ... }: {
+      devenv.shells.default = {
+        languages.python = {
+          poetry.enable = true;
+        };
+      };
+    });
+  };
 in {
   _file = __curPos.file;
 
+  imports = [ devenvModule ];
+
   options.poetry = {
-    enable = mkEnableOption "enables poetry in this project.";
-    apps = mkOption {
-      type = types.attrsOf poetryAppType;
-      description = "attrs of poetry projects. options are derived from poetry2nix parameters.";
-      example = ''
-        poetry = {
-          enable = true;
-          apps.default = {
-            projectSrc = ./.;
-          };
-        };
-      '';
+    enable = mkEnableOption "enable building poetry projects in the flake.";
+    pythonVersion = mkOption {
+      type = types.nullOr types.str;
+      default = null;
     };
+    packages = mkBuilderOption [
+      mkPoetryOptions
+    ];
+    apps = mkBuilderOption [
+      mkPoetryOptions
+    ];
   };
 
-  config = lib.mkIf enable (
-    mkMergeTopLevel ["perSystem" "flake"] (mapAttrsToList mkConfig cfg.apps)
-  );
+  config = {
+    # currently the flake causes infinite recursion... so we'll just disable that overlay
+    # flake-manager.overlays.poetry2nix = lib.mkIf cfg.enable poetry2nixFlake.overlays.default;
+
+    flake.registries.python = let
+      toPublish = filterAttrs
+        (name: _: name == "default")
+        cfg.packages
+      ;
+    in mapAttrs
+      (_: module: pkgs: python: pythonPackages: let
+        args = evalBuilder module { inherit pkgs python pythonPackages; };
+        pyproject = builtins.fromTOML (builtins.readFile args.pyproject);
+      in
+        import ./mk-python-package.nix args.src pyproject pkgs pythonPackages)
+      toPublish
+    ;
+
+    flake.builders.python-packages = 
+
+    perSystem = lib.mkIf cfg.enable ({ inputs', pkgs, config, ... }: let
+      poetry2nix = poetry2nixFlake.lib.mkPoetry2Nix { inherit pkgs; };
+      python =
+        if cfg.pythonVersion != null
+        then pkgs."python${cfg.pythonVersion}"
+        else pkgs.python3
+      ;
+      args = evalBuilders cfg.packages {
+        inherit inputs' pkgs poetry2nix;
+        inherit (pkgs) lib stdenv;
+      };
+      packages = mapAttrs
+        (_: pkgArgs:
+          poetry2nix.mkPoetryApplication pkgArgs)
+        args
+      ;
+    in {
+      inherit packages;
+      devenv.shells = mapAttrs
+        (_: package: {
+          packages = [ package.dependencyEnv ];
+        })
+        packages;
+    });
+  };
 }

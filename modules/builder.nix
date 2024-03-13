@@ -1,145 +1,69 @@
-{ inputs, config, lib, flake-parts-lib, flake-manager-lib, ... }:
+/**
+ * Builders for flakes.
+ *
+ * Builders are simply functions that take some arguments (such as a nixpkgs set)
+ * and return a derivation. They're dual-purpose:
+ *
+ * 1. Builders make it easy to expose how parts of a flake are built. Sort
+ *    of like publishing the `default.nix` but it doesn't have to have a
+ *    `default.nix` now.
+ * 2. Builders make it easy to customize behavior. For example, if I want to
+ *    create a derivation without using `stdenv.mkDerivation`, I can still
+ *    override a builder and get the same functionality.
+ * 3. Builders make it easy to benefit from extended behavior. For example,
+ *    sometimes we may want to build a Python application for multiple
+ *    interpreters. Without builders I may need to replicate this functionality
+ *    for every build tool -- with builders, I can have Poetry instead export
+ *    there and get the nice advantage of it.
+ **/
+{ inputs, config, lib, flake-manager-lib, ... }:
 let
   inherit (lib)
     evalModules
+    filterAttrs
     mapAttrs
     mkEnableOption
     mkOption
     types
   ;
-  inherit (flake-parts-lib)
-    mkDeferredModuleType
+  inherit (flake-manager-lib)
+    evalBuilder
+    mkBuilderOption
+    mkDerivationOptions
   ;
 
-  mkDependencyOption = description: mkOption {
-    type = types.listOf types.package;
-    inherit description;
-  };
-
-  # from https://nixos.org/manual/nixpkgs/stable/#ssec-stdenv-dependencies-reference
-  # TODO: make this more complete
-  mkDerivationOptions = {
-    name = mkOption {
-      type = types.str;
-      description = "full package name.";
+  builderType = functionType: {
+    default = mkEnableOption "if true, marks this as the default package on the flake.";
+    f = mkOption {
+      type = functionType;
+      description = "builder function.";
     };
-    pname = mkOption {
-      type = types.str;
-      description = "package name.";
-    };
-    version = mkOption {
-      type = types.str;
-      description = "package version.";
-    };
-    src = mkOption {
-      type = types.path;
-      description = "package source directory.";
-    };
-
-    enableParallelBuilding = mkEnableOption "";
-
-    depsBuildBuild = mkDependencyOption "dependencies whose host and target platform are the same.";
-    nativeBuildInputs = mkDependencyOption "";
-    depsBuildTarget = mkDependencyOption "";
-    depsHostHost = mkDependencyOption "";
-    buildInputs = mkDependencyOption "";
-    depsTargetTarget = mkDependencyOption "";
-    depsBuildBuildPropagated = mkDependencyOption "";
-    propagatedNativeBuildInputs = mkDependencyOption "";
-    depsBuildTargetPropagated = mkDependencyOption "";
-    depsHostHostPropagated = mkDependencyOption "";
-    propagatedBuildInputs = mkDependencyOption "";
-    depsTargetTargetPropagated = mkDependencyOption "";
-
-    dontUnpack = mkEnableOption "";
-    unpackPhase = mkOption {
-      type = types.str;
-    };
-
-    dontPatch = mkEnableOption "";
-    patchPhase = mkOption {
-      type = types.str;
-    };
-
-    dontConfigure = mkEnableOption "";
-    configureFlags = mkOption {
-      type = types.str;
-    };
-    configureFlagsArray = mkOption {
-      type = types.listOf types.str;
-    };
-    configurePhase = mkOption {
-      type = types.str;
-    };
-
-    dontBuild = mkEnableOption "";
-    buildPhase = mkOption {
-      type = types.str;
-      description = "shell script run during build phase.";
-    };
-
-    doCheck = mkOption {
-      type = types.bool;
-    };
-    checkTarget = mkOption {
-      type = types.str;
-    };
-    nativeCheckInputs = mkDependencyOption "";
-    checkPhase = mkOption {
-      type = types.str;
-      description = "shell script run during check phase.";
-    };
-
-    installPhase = mkOption {
-      type = types.str;
-      description = "shell script run during install phase.";
-    };
-    passthru = mkOption {
-      type = types.attrs;
-      description = "additional attributes";
-    };
-
-    meta = mkOption {
-      type = types.attrs;
-      description = "meta attributes";
-    };
-  };
-
-  mkBuilderOption =
-    {
-      prefix,
-      options ? mkDerivationOptions,
-    }:
-    mkOption {
-      type = mkDeferredModuleType ({ ... }: {
-        inherit options;
-      });
-
-      apply = modules: specialArgs: (
-        evalModules {
-          inherit prefix modules;
-        }
-      ).config;
-    };
-
-  derivBuilderType = mkBuilderOption {
-    prefix = ["builders" "packages"];
-    options = mkDerivationOptions;
   };
 in {
-  _module.args.flake-modules-lib = {
-    inherit mkDerivationOptions mkBuilderOption;
-  };
+  _file = __curPos.file;
 
-  options.builders = {
-    packages = mkOption {
-      type = types.lazyAttrsOf mkBuilderOption;
+  options = {
+    flake.builders.derivation = mkOption {
+      type = types.lazyAttrsOf builderType;
+      default = { };
     };
+
+    derivations = mkBuilderOption [
+      mkDerivationOptions
+    ];
   };
 
-  perSystem = { pkgs, ... }: {
-    packages = mapAttrs
-      (builder: builder { inherit pkgs; })
-      config.builders.packages;
+  config = {
+    flake.builders.derivation = mapAttrs
+      (_: derivModule: pkgs: let
+          derivArgs = evalBuilder derivModule { inherit pkgs; inherit (pkgs) stdenv lib; };
+        in pkgs.stdenv.mkDerivation derivArgs)
+      config.derivations;
+
+    perSystem = { inputs, pkgs, ... }: {
+      packages = mapAttrs
+        (_: builder: builder pkgs)
+        config.flake.builders.derivation;
+    };
   };
 }
