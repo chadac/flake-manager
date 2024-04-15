@@ -34,42 +34,18 @@ let
 in {
   _file = __curPos.file;
 
-  options.python = {
-    defaultVersion = mkOption {
-      type = types.str;
-      default = "3";
-    };
-
-    additionalVersions = mkOption {
-      type = types.listOf types.str;
-      default = [ ];
-    };
-
-    packages = {
-      type = types.lazyAttrsOf pythonPackageType;
-      default = { };
-    };
-
-    apps = {
-      type = types.lazyAttrsOf pythonPackageType;
-      default = { };
-    };
+  options.libraries.python = mkOption {
+    type = types.lazyAttrsOf pythonPackageType;
+    default = { };
   };
 
   config = {
-    flake.builders.python-package = mapAttrs
+    flake.builders.python = mapAttrs
       (name: derivModule: pythonBuilder {
         cmd = "buildPythonPackage";
         args = derivModule;
       })
-      config.python.packages;
-
-    flake.builders.python-app = mapAttrs
-      (name: derivModule: pythonBuilder {
-        cmd = "buildPythonApplication";
-        args = derivModule;
-      })
-      config.python.apps;
+      config.libraries.python;
 
     perSystem = { pkgs, ... }: let
       defaultPython = pkgs."python${cfg.pythonVersion}";
