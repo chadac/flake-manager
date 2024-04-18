@@ -29,16 +29,86 @@ let
     default = [ ];
   };
 
-  # from https://nixos.org/manual/nixpkgs/stable/#ssec-stdenv-dependencies-reference
-  # TODO: make this more complete
-  mkDerivationOptions = { config, ... }: {
-    _file = __curPos.file;
+  dependencyOptions = {
+    depsBuildBuild = mkDependencyOption "dependencies whose host and target platform are the same.";
+    nativeBuildInputs = mkDependencyOption "";
+    depsBuildTarget = mkDependencyOption "";
+    depsHostHost = mkDependencyOption "";
+    buildInputs = mkDependencyOption "";
+    depsTargetTarget = mkDependencyOption "";
+    depsBuildBuildPropagated = mkDependencyOption "";
+    propagatedNativeBuildInputs = mkDependencyOption "";
+    depsBuildTargetPropagated = mkDependencyOption "";
+    depsHostHostPropagated = mkDependencyOption "";
+    propagatedBuildInputs = mkDependencyOption "";
+    depsTargetTargetPropagated = mkDependencyOption "";
+    nativeCheckInputs = mkDependencyOption "";
+  };
 
-    options = {
+  phaseOptions = {
+    dontUnpack = mkEnableOption "";
+    unpackPhase = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+
+    dontPatch = mkEnableOption "";
+    patchPhase = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+
+    dontConfigure = mkEnableOption "";
+    configureFlags = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+    };
+    configureFlagsArray = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+    };
+    configurePhase = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+
+    dontBuild = mkEnableOption "";
+    buildPhase = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+    makeFlags = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+    };
+
+    doCheck = mkOption {
+      type = types.bool;
+      default = true;
+    };
+    checkTarget = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+    };
+    checkPhase = mkOption {
+      type = types.nullOr types.str;
+      description = "shell script run during check phase.";
+      default = null;
+    };
+
+    installPhase = mkOption {
+      type = types.nullOr types.str;
+      description = "shell script run during install phase.";
+      default = null;
+    };
+  };
+
+  packageNameOptions = {
       pname = mkOption {
         type = types.str;
         description = "package name.";
       };
+
       version = mkOption {
         type = types.str;
         description = "package version.";
@@ -47,85 +117,20 @@ let
       name = mkOption {
         type = types.str;
         description = "full package name.";
-        default = "${config.pname}-${config.version}";
       };
+  };
+  # from https://nixos.org/manual/nixpkgs/stable/#ssec-stdenv-dependencies-reference
+  # TODO: make this more complete
+  mkDerivationModule = { config, ... }: {
+    _file = __curPos.file;
 
+    options = (dependencyOptions // phaseOptions // packageNameOptions // {
       src = mkOption {
         type = types.path;
         description = "package source directory.";
       };
 
       enableParallelBuilding = mkEnableOption "";
-
-      depsBuildBuild = mkDependencyOption "dependencies whose host and target platform are the same.";
-      nativeBuildInputs = mkDependencyOption "";
-      depsBuildTarget = mkDependencyOption "";
-      depsHostHost = mkDependencyOption "";
-      buildInputs = mkDependencyOption "";
-      depsTargetTarget = mkDependencyOption "";
-      depsBuildBuildPropagated = mkDependencyOption "";
-      propagatedNativeBuildInputs = mkDependencyOption "";
-      depsBuildTargetPropagated = mkDependencyOption "";
-      depsHostHostPropagated = mkDependencyOption "";
-      propagatedBuildInputs = mkDependencyOption "";
-      depsTargetTargetPropagated = mkDependencyOption "";
-
-      dontUnpack = mkEnableOption "";
-      unpackPhase = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-      };
-
-      dontPatch = mkEnableOption "";
-      patchPhase = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-      };
-
-      dontConfigure = mkEnableOption "";
-      configureFlags = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-      };
-      configureFlagsArray = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-      };
-      configurePhase = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-      };
-
-      dontBuild = mkEnableOption "";
-      buildPhase = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-      };
-      makeFlags = mkOption {
-        type = types.listOf types.str;
-        default = [ ];
-      };
-
-      doCheck = mkOption {
-        type = types.bool;
-        default = true;
-      };
-      checkTarget = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-      };
-      nativeCheckInputs = mkDependencyOption "";
-      checkPhase = mkOption {
-        type = types.nullOr types.str;
-        description = "shell script run during check phase.";
-        default = null;
-      };
-
-      installPhase = mkOption {
-        type = types.nullOr types.str;
-        description = "shell script run during install phase.";
-        default = null;
-      };
 
       passthru = mkOption {
         type = types.attrs;
@@ -138,35 +143,21 @@ let
         description = "meta attributes";
         default = { };
       };
+    });
+    config = {
+      name = lib.mkDefault "${config.pname}-${config.version}";
     };
   };
-
-  mkBuilderOption = modules: let
-    type = types.deferredModuleWith {
-      staticModules = modules;
-    };
-  in mkOption {
-    type = types.lazyAttrsOf type;
-    default = { };
-  };
-
-  evalBuilder = module: specialArgs: (evalModules {
-    modules = [ module ];
-    inherit specialArgs;
-  }).config;
-
-  evalBuilders = attrModules: specialArgs: mapAttrs
-    (_: module:
-      (evalModules {
-        modules = [ module ];
-        inherit specialArgs;
-      }).config)
-    attrModules;
 in {
   _file = __curPos.file;
 
   _module.args.flake-manager-lib = {
-    inherit evalBuilder evalBuilders mkDependencyOption mkBuilderOption mkDerivationOptions;
+    inherit
+      dependencyOptions
+      phaseOptions
+      mkDependencyOption
+      packageNameOptions
+    ;
 
     # from: https://gist.github.com/udf/4d9301bdc02ab38439fd64fbda06ea43
     # useful for defining top-level options that export both perSystem and flake-level attrs
@@ -181,6 +172,13 @@ in {
       builtins.seq
         (inputs.${name} or (throw "input '${name}' not found. add the following to your `flake.nix`:\n\n${example}\n"))
         inputs.${name};
+
+    # Option that is enabled by default when a flake input is present.
+    mkEnableInputOption = inputName: description: mkOption {
+      type = types.bool;
+      inherit description;
+      default = builtins.hasAttr inputName inputs;
+    };
 
     recipeTypes = import ./recipes.nix args;
   };

@@ -1,3 +1,0 @@
-{ pythonPackages, ... }:
-pythonPackages.buildPythonPackage {
-}

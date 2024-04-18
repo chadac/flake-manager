@@ -8,6 +8,7 @@
   ;
   inherit (flake-manager-lib)
     tryImportFlake
+    mkEnableInputOption
   ;
   devenv = tryImportFlake "devenv" "github:cachix/devenv" [ "nixpkgs" ];
   enable = config.devenv.enable;
@@ -28,6 +29,7 @@ in {
 
     options = {
       devenv = {
+        enable = mkEnableInputOption "devenv" "https://devenv.sh/";
         shells = lib.mkOption {
           type = types.lazyAttrsOf devenvType;
           default = { };
