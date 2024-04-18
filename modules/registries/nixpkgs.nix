@@ -6,6 +6,7 @@
   ;
   inherit (flake-manager-lib)
     tryImportFlake
+    recipeTypes
   ;
   nixpkgs = tryImportFlake "nixpkgs" "github:NixOS/nixpkgs/nixpkgs-unstable" [ ];
 
@@ -23,7 +24,7 @@ in {
 
   options = {
     self.registries.nixpkgs = mkOption {
-      type = types.lazyAttrsOf (types.functionTo (types.functionTo types.pkgs));
+      type = types.lazyAttrsOf recipeTypes.nixpkgs;
       default = { };
     };
   };

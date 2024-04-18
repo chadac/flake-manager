@@ -157,6 +157,7 @@ in {
       phaseOptions
       mkDependencyOption
       packageNameOptions
+      mkDerivationModule
     ;
 
     # from: https://gist.github.com/udf/4d9301bdc02ab38439fd64fbda06ea43

@@ -30,6 +30,6 @@
 
     # libraries
     ./libraries/python
-    ./libraries/poetry
+    # ./libraries/poetry
   ];
 }

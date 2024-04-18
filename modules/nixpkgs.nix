@@ -19,9 +19,9 @@ in {
   };
 
   config.perSystem = { system, ... }: {
-    _module.args.pkgs = import nixpkgs {
-      inherit system;
-      overlays = attrValues config.flake-manager.overlays;
-    };
+    # _module.args.pkgs = import nixpkgs {
+    #   inherit system;
+    #   overlays = attrValues config.flake-manager.overlays;
+    # };
   };
 }

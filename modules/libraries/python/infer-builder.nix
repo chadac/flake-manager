@@ -1,4 +1,4 @@
-{ pkgs, python3, python3Packages, ... }@args:
+pkgs: python3: python3Packages:
 {
   src,
   format ? null,
@@ -13,16 +13,17 @@ let
     else if (builtins.pathExists "${src}/setup.py") then "setup.py"
     else if (builtins.pathExists "${src}/requirements.txt") then "requirements.txt"
     else "unknown";
-  buildArgs = lib.evalModules {
+  buildArgs = (lib.evalModules {
     modules = [
       ({
-        _modules.args = {
+        _file = __curPos.file;
+        _module.args = {
           inherit pkgs python3 python3Packages;
         };
       })
       args
     ];
-  }.config;
+  }).config;
   actualFormat = if (builtins.isNull format) then inferredFormat else format;
   pythonBuilders = {
     "pyproject.toml" = ./builders/pyproject-toml.nix;
@@ -33,4 +34,4 @@ let
 in import (
   pythonBuilders.${actualFormat}
     or (throw "could not infer project type. ensure you have a valid python project.")
-) args config
+) pkgs python3 python3Packages (config // { inherit buildArgs; })

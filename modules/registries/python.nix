@@ -15,23 +15,21 @@
   ;
 
   cfg = filterAttrs
-    (pkg: pkg.enable)
+    (_: pkg: pkg.enable)
     config.self.registries.python
   ;
 
   # an overlay that provides all Python libraries as an overlay.
   mkPythonOverlay = pyVer: final: prev: let
-    finalPython = final.${pyVer};
-    packageOverrides = self: super: mapAttrs
-      (_: pybuilder: pybuilder final finalPython self)
+    prevPython = prev.${pyVer};
+    packageOverrides = builtins.trace cfg (self: super: mapAttrs
+      (_: pkg: pkg.recipe prev prevPython super)
       cfg
-    ;
-    pyNew = finalPython.override {
-      inherit packageOverrides;
-      self = pyNew;
-    };
+    );
   in {
-    "${pyVer}" = pyNew;
+    "${pyVer}" = prevPython.override {
+      inherit packageOverrides;
+    };
   };
 
   pythonVersions = map
@@ -54,6 +52,11 @@
   };
 in {
   options = {
+    flake.registries.python = mkOption {
+      type = types.lazyAttrsOf recipeTypes.python;
+      default = { };
+    };
+
     self.registries.python = mkOption {
       type = types.lazyAttrsOf pythonRegistryType;
       default = { };
@@ -62,16 +65,16 @@ in {
 
   config = {
     self.registries.python = concatMapAttrs
-      (name: input:
-        if name == "self" then { }
-        else input.registries.python or { })
-      inputs
+      (name: input: mapAttrs
+        (_: recipe: { inherit recipe; })
+        (input.registries.python or { }))
+      (filterAttrs (name: _: name != "self") inputs)
     ;
 
     self.registries.nixpkgs = mkMerge
       (map
         (pyVer: {
-          "${pyVer}-packages" = mkPythonOverlay pyVer;
+          "${pyVer}-package-overrides" = mkPythonOverlay pyVer;
         })
         pythonVersions);
   };

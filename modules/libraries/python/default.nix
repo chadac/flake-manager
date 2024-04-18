@@ -15,8 +15,10 @@ let
   rootConfig = config;
   cfg = config.libraries.python;
 
-  pythonLibraryType = types.submodule ({ config, ... }: {
+  pythonLibraryType = types.submodule ({ name, config, ... }: {
     options = {
+      default = mkEnableOption "if true, will be marked as the 'default' package.";
+
       src = mkOption {
         type = types.path;
         default = "${inputs.self}";
@@ -92,8 +94,13 @@ let
     config = {
       args = {
         src = lib.mkDefault config.src;
+        pname = name;
+        # TODO: fix this!
+        version = "0.0.0";
       };
-      recipe = lib.mkDefault (args: import ./infer-builder.nix args config);
+      recipe = lib.mkDefault (pkgs: python3: python3Packages:
+        import ./infer-builder.nix pkgs python3 python3Packages (config // { inherit name; })
+      );
       devenv.enable = rootConfig.devenv.enable;
     };
   });
@@ -106,31 +113,29 @@ in {
   };
 
   config = {
-    recipes.python = map (lib: lib.recipe) cfg;
-    registries.python = map (lib: lib.recipe)
-      (filterAttrs (lib: lib.registry.enable) cfg);
-  };
+    flake.recipes.python = map (lib: lib.recipe) cfg;
+    flake.registries.python = map (lib: lib.recipe)
+      (filterAttrs (_: lib: lib.registry.enable) cfg);
 
-  perSystem = { pkgs, ... }: let
-    packages = concatMapAttrs (name: lib: let
-      pyDefault = pkgs.${lib.pythonVersion};
-      pyAdditional = listToAttrs (map
-        (pyVer: { name = "${name}-${pyVer}";
-                  value = lib.recipe {
-                    inherit pkgs;
-                    python3 = pkgs.${pyVer};
-                    python3Packages = pkgs.${pyVer}.pythonPackages;
-                  }; })
-        lib.additionalPythonVersions
-      );
+    perSystem = { pkgs, ... }: let
+      packages = concatMapAttrs (name: lib: let
+        pyDefault = pkgs.${lib.pythonVersion};
+        pyAdditional = listToAttrs (map
+          (pyVer: {
+            name = "${name}-${pyVer}";
+            value = lib.recipe pkgs pkgs.${pyVer} pkgs.${pyVer}.pkgs;
+          })
+          lib.additionalPythonVersions
+        );
+        mainPkg = lib.recipe pkgs pyDefault pyDefault.pkgs;
+
+        # TODO: lib.default only allowed once
+        defaultPackage = if lib.default then { default = mainPkg; } else { };
+      in {
+        "${name}" = mainPkg;
+      } // pyAdditional // defaultPackage) cfg;
     in {
-      "${name}" = lib.recipe {
-        inherit pkgs;
-        python3 = pyDefault;
-        python3Packages = pyDefault.pythonPackages;
-      };
-    } // pyAdditional) cfg;
-  in {
-    inherit packages;
+      inherit packages;
+    };
   };
 }

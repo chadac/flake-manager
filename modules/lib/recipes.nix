@@ -7,7 +7,7 @@ let
 in
 {
   # self: super: { newPackage = < ... >; }
-  nixpkgs = types.functionTo (types.functionTo (types.pkgs));
+  nixpkgs = types.functionTo (types.functionTo (types.lazyAttrsOf types.package));
 
   # pkgs: python: pythonPackages: <pythonDerivation>
   python = types.functionTo (types.functionTo (types.functionTo types.package));
